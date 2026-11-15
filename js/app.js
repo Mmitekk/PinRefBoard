@@ -4,11 +4,44 @@
 
   var BOARD_LABEL = { character: 'Character', reference: 'Reference' };
   var BATCH = 120;
+  var HELPER = 'http://127.0.0.1:8924';
+  var ACTIONS_URL = 'https://github.com/Mmitekk/PinRefBoard/actions/workflows/sync.yml';
+  var SYNC_CACHE = 'prb-sync';
 
+  function tagPins(pins, board) {
+    for (var i = 0; i < pins.length; i++) if (!pins[i].board) pins[i].board = board;
+    return pins;
+  }
+
+  function loadSyncCache() {
+    try {
+      var raw = localStorage.getItem(SYNC_CACHE);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function saveSyncCache(cache) {
+    try { localStorage.setItem(SYNC_CACHE, JSON.stringify(cache)); } catch (e) { /* quota — ignore */ }
+  }
+
+  // merge cached pins (from previous local syncs) over the baked-in data
   var DATA = {
-    character: window.__PINS_CHARACTER || [],
-    reference: window.__PINS_REFERENCE || [],
+    character: tagPins(window.__PINS_CHARACTER || [], 'character'),
+    reference: tagPins(window.__PINS_REFERENCE || [], 'reference'),
   };
+  (function mergeCache() {
+    var cache = loadSyncCache();
+    if (!cache || !cache.pins) return;
+    ['character', 'reference'].forEach(function (board) {
+      var fresh = cache.pins[board] || [];
+      var byId = {};
+      DATA[board].forEach(function (p) { byId[p.id] = p; });
+      fresh.forEach(function (p) {
+        p.board = board;
+        if (!byId[p.id]) DATA[board].push(p);
+      });
+    });
+  })();
 
   var state = {
     board: localStorage.getItem('prb-board') || 'all',
@@ -273,6 +306,90 @@
     localStorage.setItem('prb-color', state.color ? '1' : '0');
     syncColorUi();
   });
+
+  // ---------- sync ----------
+  var toast = document.getElementById('toast');
+  var toastTimer = null;
+
+  function showToast(html, sticky) {
+    toast.innerHTML = html;
+    toast.hidden = false;
+    // rAF ненадёжен во встроенных браузерах — используем setTimeout
+    setTimeout(function () { toast.classList.add('show'); }, 16);
+    clearTimeout(toastTimer);
+    if (!sticky) toastTimer = setTimeout(hideToast, 7000);
+  }
+
+  function hideToast() {
+    toast.classList.remove('show');
+    toastTimer = setTimeout(function () { toast.hidden = true; }, 300);
+  }
+
+  function fetchWithTimeout(url, ms) {
+    var ctl = new AbortController();
+    var t = setTimeout(function () { ctl.abort(); }, ms);
+    return fetch(url, { signal: ctl.signal }).finally(function () { clearTimeout(t); });
+  }
+
+  var syncBtn = document.getElementById('sync-btn');
+
+  function mergePins(pinsByBoard) {
+    var freshCount = 0;
+    var cache = loadSyncCache() || { ts: 0, pins: { character: [], reference: [] } };
+    ['character', 'reference'].forEach(function (board) {
+      var fresh = (pinsByBoard && pinsByBoard[board]) || [];
+      var byId = {};
+      DATA[board].forEach(function (p) { byId[p.id] = p; });
+      fresh.forEach(function (p) {
+        if (!byId[p.id]) {
+          p.board = board;
+          DATA[board].push(p);
+          byId[p.id] = p;
+          freshCount++;
+        }
+      });
+      // refresh cache: replace entries for this board with the fresh snapshot
+      cache.pins[board] = fresh.length ? fresh : DATA[board];
+    });
+    cache.ts = Date.now();
+    saveSyncCache(cache);
+    return freshCount;
+  }
+
+  function doSync() {
+    if (syncBtn.classList.contains('busy')) return;
+    syncBtn.classList.add('busy');
+    showToast('Синхронизация: проверяю локальный хелпер…', true);
+
+    fetchWithTimeout(HELPER + '/ping', 1500)
+      .then(function (r) { return r.json(); })
+      .then(function (ping) {
+        if (!ping || !ping.ok) throw new Error('helper ping failed');
+        showToast('Синхронизация: собираю пины с Pinterest (1–3 минуты)…', true);
+        return fetchWithTimeout(HELPER + '/sync', 240000).then(function (r) { return r.json(); });
+      })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error(res && res.error ? res.error : 'sync failed');
+        var added = mergePins(res.pins);
+        updateCounts();
+        applyFilter(true);
+        var msg = 'Готово: +' + added + ' новых · Character ' + res.totals.character + ', Reference ' + res.totals.reference;
+        if (res.committed) msg += ' · закоммичено локально — запушьте для публикации';
+        showToast(msg, false);
+      })
+      .catch(function (e) {
+        if (e.name === 'AbortError') {
+          showToast('Локальный хелпер не отвечает. Запустите PinRefSync (ярлык на рабочем столе) или <a href="' + ACTIONS_URL + '" target="_blank" rel="noopener">запустите синк на GitHub Actions ↗</a>', false);
+        } else {
+          showToast('Синхронизация не удалась: ' + String(e.message || e) + ' · можно запустить <a href="' + ACTIONS_URL + '" target="_blank" rel="noopener">через GitHub Actions ↗</a>', false);
+        }
+      })
+      .finally(function () {
+        syncBtn.classList.remove('busy');
+      });
+  }
+
+  syncBtn.addEventListener('click', doSync);
 
   // ---------- init ----------
   updateCounts();

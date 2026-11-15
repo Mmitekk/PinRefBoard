@@ -1,0 +1,35 @@
+name: Sync pins
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # daily 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pinref-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Scrape boards & rebuild data
+        run: node tools/sync.mjs --commit
+
+      - name: Push
+        run: |
+          git config user.name "pinref-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git pull --rebase origin main || true
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
