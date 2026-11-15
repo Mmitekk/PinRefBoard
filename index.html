@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PinRefBoard — Character &amp; Reference</title>
+<meta name="description" content="Монохромная витрина пинов с Pinterest-досок mmitekk: Character и Reference.">
+<meta property="og:title" content="PinRefBoard">
+<meta property="og:description" content="Character & Reference — монохромная витрина пинов.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111'/%3E%3Crect x='7' y='7' width='8' height='12' rx='2' fill='%23fff'/%3E%3Crect x='17' y='7' width='8' height='7' rx='2' fill='%23999'/%3E%3Crect x='17' y='16' width='8' height='9' rx='2' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css?v=1">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="./">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="8" fill="#111"/>
+        <rect x="7" y="7" width="8" height="12" rx="2" fill="#fff"/>
+        <rect x="17" y="7" width="8" height="7" rx="2" fill="#888"/>
+        <rect x="17" y="16" width="8" height="9" rx="2" fill="#fff"/>
+      </svg>
+      <span class="brand-name">Pin<b>Ref</b>Board</span>
+    </a>
+
+    <nav class="tabs" id="tabs" aria-label="Доски">
+      <button class="tab active" data-board="all">Все <span class="count" id="cnt-all"></span></button>
+      <button class="tab" data-board="character">Character <span class="count" id="cnt-character"></span></button>
+      <button class="tab" data-board="reference">Reference <span class="count" id="cnt-reference"></span></button>
+    </nav>
+
+    <div class="controls">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 105.3 14l4.4 4.3 1.4-1.4-4.3-4.4A8 8 0 0010 2zm0 2a6 6 0 110 12 6 6 0 010-12z"/></svg>
+        <input type="search" id="search" placeholder="Поиск по описанию…  ( / )" autocomplete="off" spellcheck="false">
+        <button class="search-clear" id="search-clear" aria-label="Очистить поиск" hidden>&times;</button>
+      </div>
+      <button class="icon-btn" id="color-toggle" title="Показать цвет" aria-label="Показать цвет">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 2v16a8 8 0 000-16z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="meta-line">
+    <span id="meta-stats"></span>
+  </div>
+</header>
+
+<main>
+  <div class="grid" id="grid" aria-live="polite"></div>
+  <div class="empty" id="empty" hidden>
+    <div class="empty-mark">×</div>
+    <p>Ничего не найдено</p>
+    <button class="ghost-btn" id="empty-reset">Сбросить фильтры</button>
+  </div>
+  <div class="sentinel" id="sentinel"></div>
+  <div class="loader" id="loader" hidden><span class="spinner"></span></div>
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <span class="footer-src">
+      Источники:
+      <a href="https://ru.pinterest.com/mmitekk/character/" target="_blank" rel="noopener">mmitekk/character</a> ·
+      <a href="https://ru.pinterest.com/mmitekk/reference/" target="_blank" rel="noopener">mmitekk/reference</a>
+    </span>
+    <span class="footer-note">Все изображения принадлежат их авторам и собраны с Pinterest. Хостинг — GitHub Pages.</span>
+  </div>
+</footer>
+
+<div class="modal" id="modal" hidden aria-modal="true" role="dialog">
+  <div class="modal-backdrop" id="modal-backdrop"></div>
+  <div class="modal-body">
+    <header class="modal-top">
+      <span class="modal-counter" id="modal-counter"></span>
+      <span class="modal-tag" id="modal-tag"></span>
+      <button class="icon-btn modal-close" id="modal-close" aria-label="Закрыть (Esc)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z"/></svg>
+      </button>
+    </header>
+    <div class="modal-stage" id="modal-stage">
+      <button class="nav-btn nav-prev" id="modal-prev" aria-label="Предыдущее (←)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.4 4.6 8 12l7.4 7.4 1.4-1.4-6-6 6-6z"/></svg>
+      </button>
+      <div class="modal-frame" id="modal-frame">
+        <img id="modal-img" alt="" draggable="false">
+        <div class="modal-spinner" id="modal-spinner"><span class="spinner"></span></div>
+        <div class="zoom-hint" id="zoom-hint">клик — зум</div>
+      </div>
+      <button class="nav-btn nav-next" id="modal-next" aria-label="Следующее (→)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.6 4.6 7.2 6l6 6-6 6 1.4 1.4L16 12z"/></svg>
+      </button>
+    </div>
+    <footer class="modal-cap">
+      <div class="cap-text">
+        <div class="cap-title" id="modal-title"></div>
+        <div class="cap-desc" id="modal-desc"></div>
+      </div>
+      <a class="cap-link" id="modal-link" href="#" target="_blank" rel="noopener">
+        Pinterest
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14 4h6v6h-2V7.4l-7.3 7.3-1.4-1.4L16.6 6H14zM5 5h5v2H7v10h10v-3h2v5H5z"/></svg>
+      </a>
+    </footer>
+  </div>
+</div>
+
+<script src="data/character.js"></script>
+<script src="data/reference.js"></script>
+<script src="js/app.js?v=1"></script>
+</body>
+</html>
