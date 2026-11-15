@@ -4,9 +4,24 @@
 
   var BOARD_LABEL = { character: 'Character', reference: 'Reference' };
   var BATCH = 120;
-  var HELPER = 'http://127.0.0.1:8924';
+  var HELPER_PORTS = [8924, 8925, 8926];
   var ACTIONS_URL = 'https://github.com/Mmitekk/PinRefBoard/actions/workflows/sync.yml';
   var SYNC_CACHE = 'prb-sync';
+
+  // найти локальный хелпер: пингуем порты, выбираем с наибольшей версией (старые зомби-процессы игнорируем)
+  function findHelper() {
+    var probes = HELPER_PORTS.map(function (port) {
+      return fetchWithTimeout('http://127.0.0.1:' + port + '/ping', 900)
+        .then(function (r) { return r.json(); })
+        .then(function (j) { return j && j.ok ? { port: port, v: j.v || 1 } : null; })
+        .catch(function () { return null; });
+    });
+    return Promise.all(probes).then(function (list) {
+      var found = list.filter(Boolean);
+      found.sort(function (a, b) { return b.v - a.v; });
+      return found.length ? 'http://127.0.0.1:' + found[0].port : null;
+    });
+  }
 
   function tagPins(pins, board) {
     for (var i = 0; i < pins.length; i++) if (!pins[i].board) pins[i].board = board;
@@ -317,7 +332,7 @@
     // rAF ненадёжен во встроенных браузерах — используем setTimeout
     setTimeout(function () { toast.classList.add('show'); }, 16);
     clearTimeout(toastTimer);
-    if (!sticky) toastTimer = setTimeout(hideToast, 7000);
+    if (!sticky) toastTimer = setTimeout(hideToast, 10000);
   }
 
   function hideToast() {
@@ -359,26 +374,27 @@
   function doSync() {
     if (syncBtn.classList.contains('busy')) return;
     syncBtn.classList.add('busy');
-    showToast('Синхронизация: проверяю локальный хелпер…', true);
+    showToast('Синхронизация: ищу локальный хелпер…', true);
 
-    fetchWithTimeout(HELPER + '/ping', 1500)
-      .then(function (r) { return r.json(); })
-      .then(function (ping) {
-        if (!ping || !ping.ok) throw new Error('helper ping failed');
+    findHelper()
+      .then(function (base) {
+        if (!base) throw new Error('no-helper');
         showToast('Синхронизация: собираю пины с Pinterest (1–3 минуты)…', true);
-        return fetchWithTimeout(HELPER + '/sync', 240000).then(function (r) { return r.json(); });
+        return fetchWithTimeout(base + '/sync', 300000).then(function (r) { return r.json(); });
       })
       .then(function (res) {
         if (!res || !res.ok) throw new Error(res && res.error ? res.error : 'sync failed');
         var added = mergePins(res.pins);
         updateCounts();
         applyFilter(true);
-        var msg = 'Готово: +' + added + ' новых · Character ' + res.totals.character + ', Reference ' + res.totals.reference;
+        var msg = added > 0
+          ? 'Готово: +' + added + ' новых пинов · Character ' + res.totals.character + ', Reference ' + res.totals.reference
+          : 'Готово: новых пинов нет — на Pinterest ничего не появилось с последнего сбора · Character ' + res.totals.character + ', Reference ' + res.totals.reference;
         if (res.committed) msg += ' · закоммичено локально — запушьте для публикации';
         showToast(msg, false);
       })
       .catch(function (e) {
-        if (e.name === 'AbortError') {
+        if (e.message === 'no-helper' || e.name === 'AbortError') {
           showToast('Локальный хелпер не отвечает. Запустите PinRefSync (ярлык на рабочем столе) или <a href="' + ACTIONS_URL + '" target="_blank" rel="noopener">запустите синк на GitHub Actions ↗</a>', false);
         } else {
           showToast('Синхронизация не удалась: ' + String(e.message || e) + ' · можно запустить <a href="' + ACTIONS_URL + '" target="_blank" rel="noopener">через GitHub Actions ↗</a>', false);

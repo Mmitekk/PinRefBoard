@@ -1,10 +1,11 @@
 // PinRefBoard local sync helper — serves the sync pipeline to the site's sync button.
-// Listens on 127.0.0.1:8924 only. Allowed origins: the GitHub Pages site + local preview.
+// Listens on 127.0.0.1, first free port from 8924. Allowed origins: the GitHub Pages site + local preview.
 // Run: node tools/sync-server.mjs
 import http from 'node:http';
 import { runSync } from './sync.mjs';
 
-const PORT = 8924;
+const BASE_PORT = 8924;
+const VERSION = 2; // bump when sync-server logic changes — the site picks the helper with the highest version
 const ALLOWED_ORIGINS = [
   'https://mmitekk.github.io',
   'http://127.0.0.1:8923',
@@ -21,7 +22,7 @@ function cors(res, origin) {
   res.setHeader('Vary', 'Origin');
 }
 
-const server = http.createServer(async (req, res) => {
+async function handle(req, res) {
   const origin = String(req.headers.origin || '');
   const url = (req.url || '/').split('?')[0];
 
@@ -44,7 +45,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('content-type', 'application/json; charset=utf-8');
 
   if (url === '/ping') {
-    res.writeHead(200).end(JSON.stringify({ ok: true, helper: 'pinref-sync', ready: !syncing }));
+    res.writeHead(200).end(JSON.stringify({ ok: true, helper: 'pinref-sync', v: VERSION, ready: !syncing }));
     return;
   }
 
@@ -69,9 +70,27 @@ const server = http.createServer(async (req, res) => {
   }
 
   res.writeHead(404).end(JSON.stringify({ ok: false, error: 'not found' }));
-});
+}
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log('PinRefSync helper: http://127.0.0.1:' + PORT + ' (ping/sync)');
-  console.log('allowed origins: ' + ALLOWED_ORIGINS.join(', '));
-});
+function listen(port, attemptsLeft) {
+  const server = http.createServer((req, res) => {
+    Promise.resolve(handle(req, res)).catch((e) => {
+      try { res.writeHead(500).end(JSON.stringify({ ok: false, error: String(e.message || e) })); } catch {}
+    });
+  });
+  server.on('error', (e) => {
+    if (e.code === 'EADDRINUSE' && attemptsLeft > 0) {
+      console.log('port ' + port + ' busy (maybe a stale helper) — trying ' + (port + 1));
+      listen(port + 1, attemptsLeft - 1);
+    } else {
+      console.error('cannot listen: ' + e.message);
+      process.exit(1);
+    }
+  });
+  server.listen(port, '127.0.0.1', () => {
+    console.log('PinRefSync helper v' + VERSION + ': http://127.0.0.1:' + port + ' (ping/sync)');
+    console.log('allowed origins: ' + ALLOWED_ORIGINS.join(', '));
+  });
+}
+
+listen(BASE_PORT, 6);
